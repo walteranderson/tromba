@@ -1,25 +1,19 @@
 package project
 
 import (
-	"bytes"
-	"fmt"
-	"html/template"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 
-	"github.com/gomarkdown/markdown"
-	"github.com/gomarkdown/markdown/html"
-	"github.com/gomarkdown/markdown/parser"
-
 	"github.com/walteranderson/tromba/internal/config"
+	"github.com/walteranderson/tromba/internal/renderer"
 )
 
 type Project struct {
 	Config *config.Config
+	render *renderer.Renderer
 	Pages  []*Page
 	wg     sync.WaitGroup
 }
@@ -35,6 +29,7 @@ type Page struct {
 func Build(c *config.Config) (*Project, error) {
 	proj := &Project{
 		Config: c,
+		render: renderer.New(),
 		Pages:  []*Page{},
 	}
 
@@ -80,17 +75,20 @@ func (p *Project) processPage(page *Page) {
 	defer p.wg.Done()
 	switch page.Ext {
 	case "md":
-		err := page.renderMarkdown()
+		content, err := p.render.Markdown(page.Path)
 		if err != nil {
 			// TODO
 			log.Println(err)
 		}
+		page.HtmlContent = content
+
 	case "html":
-		err := page.renderHtml()
+		content, err := p.render.Html(page.Path)
 		if err != nil {
 			// TODO
 			log.Println(err)
 		}
+		page.HtmlContent = content
 	default:
 		log.Printf("Unsupported file extension: %s\n", page.Ext)
 	}
@@ -135,49 +133,4 @@ func (p *Project) walkPages() error {
 		return nil
 	})
 	return err
-}
-
-func (page *Page) renderMarkdown() error {
-	md, err := getFileContent(page.Path)
-	if err != nil {
-		return err
-	}
-	extensions := parser.CommonExtensions | parser.AutoHeadingIDs | parser.NoEmptyLineBeforeBlock
-	p := parser.NewWithExtensions(extensions)
-	doc := p.Parse(md)
-	htmlFlags := html.CommonFlags | html.HrefTargetBlank
-	opts := html.RendererOptions{Flags: htmlFlags}
-	renderer := html.NewRenderer(opts)
-	html := markdown.Render(doc, renderer)
-	page.HtmlContent = string(html)
-	return nil
-}
-
-func (page *Page) renderHtml() error {
-	if page.Ext != "html" {
-		return fmt.Errorf("Trying to render HTML on the wrong filetype, got %s", page.Ext)
-	}
-	tmpl, err := template.ParseFiles(page.Path)
-	if err != nil {
-		return err
-	}
-	var buf bytes.Buffer
-	err = tmpl.Execute(&buf, "")
-	if err != nil {
-		return err
-	}
-	page.HtmlContent = buf.String()
-	return nil
-}
-
-func getFileContent(path string) ([]byte, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return nil, err
-	}
-	data, err := io.ReadAll(file)
-	if err != nil {
-		return nil, err
-	}
-	return data, nil
 }

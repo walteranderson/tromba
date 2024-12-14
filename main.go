@@ -13,5 +13,4 @@ func main() {
 	if err != nil {
 		log.Fatal("ERROR: project build", err)
 	}
-	// fmt.Printf("%+v\n", conf.ProjectConfig)
 }
